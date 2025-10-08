@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gestión de Stock</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="brand">
+      <div class="brand-left">
+        <img class="logo" src="assets/company/logo-ejemplo.png" alt="Logo empresa (reemplazar)" onerror="this.style.display='none'">
+        <div>
+          <h1>Gestión de Stock</h1>
+        </div>
+      </div>
+      <!-- Se quitaron botones de exportar/importar/vincular -->
+    </div>
+
+    <!-- Burbujita (respetá tu CSS actual si lo moviste de lugar) -->
+    <div class="bubble-bar">
+      <div class="bubble" id="bubbleEgg" title="👀"></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>Imágenes de la empresa</h2>
+      <div class="gallery" id="galleryCompany">
+        <img src="assets/company/oficina-1.jpg" alt="Foto empresa 1" onerror="this.style.display='none'">
+        <img src="assets/company/equipo-1.jpg" alt="Foto empresa 2" onerror="this.style.display='none'">
+        <img src="assets/company/deposito-1.jpg" alt="Foto empresa 3" onerror="this.style.display='none'">
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Productos</h2>
+      <div class="grid form-grid">
+        <div>
+          <label>Código (SKD)</label>
+          <input id="sku" placeholder="Ej: SKD-001">
+        </div>
+        <div>
+          <label>Objeto</label>
+          <input id="objeto" placeholder="Ej: Mouse inalámbrico">
+        </div>
+        <div>
+          <label>Descripción</label>
+          <input id="descripcion" placeholder="Breve descripción del producto">
+        </div>
+        <div>
+          <label>Cantidad</label>
+          <input id="cantidad" type="number" min="0" step="1" placeholder="0">
+        </div>
+        <div>
+          <label>Precio unitario</label>
+          <input id="precio" type="number" min="0" step="0.01" placeholder="0.00">
+        </div>
+        <div class="actions">
+          <button class="btn" id="btnAgregar">Agregar / Actualizar</button>
+        </div>
+      </div>
+      <p class="muted">Tip: <kbd class="kbd">Enter</kbd> en “Precio” para cargar más rápido.</p>
+    </section>
+
+    <section class="card">
+      <div class="toolbar">
+        <input id="buscar" class="search" placeholder="Buscar por objeto, código (SKD) o descripción…">
+        <span class="pill">Items: <span id="countItems">0</span></span>
+        <span class="pill">Valor total stock: $ <span id="valorTotal">0.00</span></span>
+      </div>
+      <div class="table-wrap">
+        <table id="tabla">
+          <thead>
+            <tr>
+              <th>Código (SKD)</th>
+              <th>Objeto</th>
+              <th>Descripción</th>
+              <th class="right">Cantidad</th>
+              <th class="right">Precio</th>
+              <th class="right">Precio Total</th>
+              <th class="right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <h3 style="margin-top:16px;">Imágenes de productos</h3>
+      <p class="muted">Colocá fotos en <code>assets/products/</code> y usá el mismo nombre que el código (SKD) con extensión .jpg o .png (ej: <code>SKD-001.jpg</code>).</p>
+      <div class="gallery" id="galleryProducts"></div>
+    </section>
+
+    <section class="grid two-col">
+      <section class="card">
+        <h2 id="ventasTitulo">Registrar venta</h2>
+        <div class="grid form-grid">
+          <div>
+            <label>Producto</label>
+            <select id="ventaProducto"></select>
+          </div>
+          <div>
+            <label>Cantidad</label>
+            <input id="ventaCantidad" type="number" min="1" step="1" placeholder="1">
+          </div>
+          <div>
+            <label>Fecha</label>
+            <input id="ventaFecha" type="date">
+          </div>
+          <div class="actions">
+            <button class="btn" id="btnVender">Vender</button>
+            <button class="btn secondary" id="btnCancelarEdicion" style="display:none">Cancelar edición</button>
+          </div>
+        </div>
+        <p class="muted">La venta descuenta del stock. Podés editar/eliminar ventas en la tabla.</p>
+      </section>
+
+      <section class="card">
+        <h2>Resumen de ventas</h2>
+        <div class="toolbar">
+          <span class="pill">Ventas: <span id="ventasCount">0</span></span>
+          <span class="pill">Ingresos: $ <span id="ventasIngresos">0.00</span></span>
+        </div>
+        <div class="table-wrap small">
+          <table id="tablaVentas">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Código</th>
+                <th>Objeto</th>
+                <th class="right">Cant.</th>
+                <th class="right">Precio</th>
+                <th class="right">Total</th>
+                <th class="right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <footer class="footer">
+      <p>Datos persistidos en tu navegador (localStorage).</p>
+    </footer>
+  </main>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
