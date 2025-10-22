@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Generar Cotizacion</title>
+    <link rel="stylesheet" href="../css/style.css" />
+    <style>
+        .cotizacion-table th,
+        .cotizacion-table td {
+            border-bottom: 1px solid #EEE;
+            padding: 10px;
+            text-align: left;
+        }
+
+        .cotizacion-table th {
+            background: #FAFAFA;
+        }
+
+        .cotizacion-actions {
+            margin-top: 16px;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <div class="brand">
+            <div class="brand-left">
+                <img class="logo" src="/assets/logoPalacio.png" alt="Logo empresa" onerror="this.style.display='none'">
+                <div>
+                    <h1>Generar Cotizacion</h1>
+                </div>
+            </div>
+            <a href="../index.html" class="btn secondary">Volver al inicio</a>
+        </div>
+    </header>
+    <main class="container">
+        <section class="card">
+
+            <div class="cotizacion-header">
+                <div>
+                    <h1>Palacio de la Limpieza S.A.</h1>
+                    <p>Moreno 3260; Edison 333, Mar del Plata</p>
+                </div>
+                <div class="cotizacion-info">
+                    <p><strong>Fecha:</strong> <span id="fechaCotizacion"></span></p>
+                </div>
+            </div>
+
+            <form id="formAgregarProducto" class="grid form-grid" autocomplete="off">
+                <div>
+                    <label>Producto</label>
+                    <select id="productoSelect"></select>
+                </div>
+                <div>
+                    <label>Cantidad</label>
+                    <input id="cantidadCotizacion" type="number" min="1" step="1" placeholder="1" required>
+                </div>
+                <div class="actions">
+                    <button class="btn" type="submit">Agregar a cotizacion</button>
+                </div>
+            </form>
+            <div class="table-wrap">
+                <table class="cotizacion-table" id="tablaCotizacion">
+                    <thead>
+                        <tr>
+                            <th>Producto</th>
+                            <th>Cantidad</th>
+                            <th>Precio unitario</th>
+                            <th>Total</th>
+                            <th>Quitar</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" style="text-align:right;"><strong>Total cotizacion:</strong></td>
+                            <td colspan="2" id="totalCotizacion">$0.00</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div class="cotizacion-actions">
+                <button class="btn secondary" onclick="window.print()">Imprimir / Guardar PDF</button>
+            </div>
+        </section>
+    </main>
+
+    <div class="condiciones-pago">
+        <p><strong>Condiciones y forma de pago:</strong></p>
+        <p>El pago debe realizarse en un plazo máximo de 15 días.</p>
+        <p>Banco Nación - CBU: 1230000000000000000000</p>
+    </div>
+    <div class="firma">
+        <p>_______________________</p>
+        <p>Firma y sello</p>
+    </div>
+
+
+    <footer class="footer">
+        <p>Datos de cotizacion generados en base al stock actual.</p>
+    </footer>
+
+    <script>
+        // Simula obtener productos del localStorage (igual que en tu app)
+        const items = JSON.parse(localStorage.getItem("stock_items_v5") || "[]");
+        const productoSelect = document.getElementById('productoSelect');
+        const tablaCotizacion = document.getElementById('tablaCotizacion').querySelector('tbody');
+        const totalCotizacion = document.getElementById('totalCotizacion');
+        let cotizacion = [];
+
+        // Llenar select con productos en stock
+        function cargarProductos() {
+            productoSelect.innerHTML = items
+                .filter(it => it.cantidad > 0)
+                .map(it => `<option value="${it.sku}">${it.objeto} (${it.sku}) - Stock: ${it.cantidad}</option>`)
+                .join("");
+        }
+
+        // Renderizar tabla de cotizacion
+        function renderCotizacion() {
+            tablaCotizacion.innerHTML = cotizacion.map((f, i) => `
+        <tr>
+          <td>${f.objeto}</td>
+          <td>${f.cantidad}</td>
+          <td>$${f.precio.toFixed(2)}</td>
+          <td>$${(f.precio * f.cantidad).toFixed(2)}</td>
+          <td><button class="btn secondary" onclick="quitarDeCotizacion(${i})">Quitar</button></td>
+        </tr>
+      `).join("");
+            const total = cotizacion.reduce((acc, f) => acc + f.precio * f.cantidad, 0);
+            totalCotizacion.textContent = `$${total.toFixed(2)}`;
+        }
+
+        // Quitar producto de la cotizacion
+        window.quitarDeCotizacion = function (idx) {
+            cotizacion.splice(idx, 1);
+            renderCotizacion();
+        };
+
+        // Agregar producto a la cotizacion
+        document.getElementById('formAgregarProducto').onsubmit = function (e) {
+            e.preventDefault();
+            const sku = productoSelect.value;
+            const cantidad = parseInt(document.getElementById('cantidadCotizacion').value, 10);
+            const prod = items.find(it => it.sku === sku);
+            if (!prod) return alert("Producto no encontrado.");
+            if (cantidad < 1 || cantidad > prod.cantidad) return alert("Cantidad inválida o supera el stock.");
+            cotizacion.push({
+                sku: prod.sku,
+                objeto: prod.objeto,
+                cantidad,
+                precio: prod.precio
+            });
+            renderCotizacion();
+            this.reset();
+        };
+
+        cargarProductos();
+        renderCotizacion();
+        document.getElementById('fechaCotizacion').textContent = new Date().toLocaleDateString();
+
+    </script>
+</body>
+
+</html>

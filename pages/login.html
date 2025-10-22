@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Iniciar Sesión</title>
+    <link rel="stylesheet" href="../css/style.css">
+</head>
+
+<body class="login-body">
+    <div class="login-card">
+        <h1>Iniciar sesión</h1>
+
+        <form id="loginForm">
+            <label>Usuario</label>
+            <input type="text" id="usuario" placeholder="Ingrese usuario" required />
+            <label>Contraseña</label>
+            <input type="password" id="password" placeholder="Ingrese contraseña" required />
+            <button class="btn" type="submit">Entrar</button>
+        </form>
+
+        <h4 class="info">User: Admin || Password:1234</h4>
+        <div class="error" id="errorMsg"></div>
+    </div>
+
+    <script>
+        // Usuario y contraseña de prueba
+        const USER = "Admin";
+        const PASS = "1234";
+
+        document.getElementById("loginForm").addEventListener("submit", (e) => {
+            e.preventDefault();
+            const user = document.getElementById("usuario").value.trim();
+            const pass = document.getElementById("password").value.trim();
+            const error = document.getElementById("errorMsg");
+
+            if (user === USER && pass === PASS) {
+                localStorage.setItem("usuario_logueado", user);
+                window.location.href = "../index.html";
+            } else {
+                error.textContent = "Usuario o contraseña incorrectos.";
+            }
+        });
+    </script>
+</body>
+
+</html>
