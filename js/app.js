@@ -20,7 +20,7 @@ const fmt = (n) => (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDig
 const by = (k) => (a, b) => (a[k] > b[k] ? 1 : a[k] < b[k] ? -1 : 0);
 const $ = (sel) => document.querySelector(sel);
 const el = (id) => document.getElementById(id);
-const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
 // --- DOM refs ---
 const tbody = $("#tabla tbody");
@@ -47,7 +47,7 @@ function render() {
   const filtered = items
     .slice()
     .sort(by("objeto"))
-    .filter(it => !q || it.objeto.toLowerCase().includes(q) || it.sku.toLowerCase().includes(q) || (it.descripcion||'').toLowerCase().includes(q));
+    .filter(it => !q || it.objeto.toLowerCase().includes(q) || it.sku.toLowerCase().includes(q) || (it.descripcion || '').toLowerCase().includes(q));
 
   // Tabla stock
   tbody.innerHTML = "";
@@ -162,7 +162,7 @@ function vender(sku, cantidad, fecha) {
   it.cantidad -= cantidad;
   ventas.unshift({
     id: uid(),
-    fecha: fecha || new Date().toISOString().slice(0,10),
+    fecha: fecha || new Date().toISOString().slice(0, 10),
     sku: it.sku,
     objeto: it.objeto,
     cantidad,
@@ -239,7 +239,7 @@ function actualizarVenta(id, nuevoSku, nuevaCantidad, nuevaFecha) {
   v.cantidad = nuevaCantidad;
   v.precio = Number(it.precio) || 0;
   v.total = v.cantidad * v.precio;
-  v.fecha = nuevoSku ? (nuevaFecha || new Date().toISOString().slice(0,10)) : v.fecha;
+  v.fecha = nuevoSku ? (nuevaFecha || new Date().toISOString().slice(0, 10)) : v.fecha;
 
   save();
   editingSaleId = null;
@@ -252,25 +252,6 @@ function actualizarVenta(id, nuevoSku, nuevaCantidad, nuevaFecha) {
   render();
 }
 
-
-// Exportar
-function exportarJSON() {
-  const data = {
-    items,
-    ventas
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "stock_palacio_limpieza.json";
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
-}
 
 
 
@@ -355,4 +336,18 @@ setInterval(() => {
     indexObjeto = (indexObjeto + 1) % ejemplosObjeto.length;
   }
 }, 3000);
+
+// Boton cerrar sesion
+function cerrarSesion() {
+  localStorage.removeItem("usuario_logueado");
+  
+  const path = window.location.pathname;
+
+  if (path.includes("/pages/")) {
+    window.location.href = "../pages/login.html";
+  } else {
+    window.location.href = "./pages/login.html";
+  }
+}
+
 
