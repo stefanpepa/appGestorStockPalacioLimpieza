@@ -1,26 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Dashboard from "./components/Dashboard";
+import ProductosVentas from "./pages/ProductosVentas";
+import Facturacion from "./pages/Facturacion";
+import Cotizacion from "./pages/Cotizacion";
 import Login from "./pages/login";
-import "./styles/main.css";
 
 function App() {
-  const [usuario, setUsuario] = useState(null);
+  const [view, setView] = useState("login");
 
-  useEffect(() => {
-    const guardado = localStorage.getItem("usuario_logueado");
-    if (guardado) setUsuario(guardado);
-  }, []);
+  const handleNavigate = (nextView) => setView(nextView);
+  const handleLogin = () => setView("dashboard");
+  const handleLogout = () => setView("login");
 
-  const handleLogin = (user) => setUsuario(user);
-  const handleLogout = () => {
-    localStorage.removeItem("usuario_logueado");
-    setUsuario(null);
-  };
-
-  return usuario ? (
-    <Dashboard onLogout={handleLogout} />
-  ) : (
-    <Login onLogin={handleLogin} />
+  return (
+    <>
+      {view === "login" && <Login onLogin={handleLogin} />}
+      {view === "dashboard" && <Dashboard onNavigate={handleNavigate} onLogout={handleLogout} />}
+      {view === "productos" && <ProductosVentas onBack={() => setView("dashboard")} />}
+      {view === "facturar" && <Facturacion onBack={() => setView("dashboard")} />}
+      {view === "cotizar" && <Cotizacion onBack={() => setView("dashboard")} />}
+    </>
   );
 }
 
