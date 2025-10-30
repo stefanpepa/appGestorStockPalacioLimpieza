@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios";
+import { supabase } from "../supabaseClient";
 import { Button } from "primereact/button";
 import { InputNumber } from "primereact/inputnumber";
 import { Card } from "primereact/card";
@@ -10,21 +10,21 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import "../styles/main.css";
 
-const API_URL = "http://localhost:3001";
-
 export default function Facturacion({ onBack }) {
   const [productos, setProductos] = useState([]);
   const [items, setItems] = useState([]);
   const [nuevo, setNuevo] = useState({ producto_id: null, cantidad: 1 });
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
 
+  // 🔹 Cargar productos de Supabase
   useEffect(() => {
     cargarProductos();
   }, []);
 
   const cargarProductos = async () => {
-    const res = await axios.get(`${API_URL}/productos`);
-    setProductos(res.data);
+    const { data, error } = await supabase.from("productos").select("*");
+    if (error) console.error("Error al cargar productos:", error);
+    else setProductos(data);
   };
 
   // ➕ Agregar producto a la factura (sin afectar stock todavía)
@@ -37,7 +37,13 @@ export default function Facturacion({ onBack }) {
     const total = (nuevo.cantidad || 1) * producto.precio;
     setItems([
       ...items,
-      { id: producto.id, descripcion: producto.objeto, cantidad: nuevo.cantidad, precio: producto.precio, total },
+      {
+        id: producto.id,
+        descripcion: producto.objeto,
+        cantidad: nuevo.cantidad,
+        precio: producto.precio,
+        total,
+      },
     ]);
 
     setNuevo({ producto_id: null, cantidad: 1 });
@@ -45,22 +51,35 @@ export default function Facturacion({ onBack }) {
 
   const totalFactura = items.reduce((sum, it) => sum + it.total, 0);
 
-  // 🧾 Generar PDF y registrar venta real
+  // 🧾 Generar PDF y registrar venta real en Supabase
   const generarFactura = async () => {
     if (items.length === 0) return alert("No hay productos en la factura.");
 
     try {
-      // 📤 Registrar cada venta y descontar stock en el backend
+      // 📤 Registrar cada venta y descontar stock en Supabase
       for (const item of items) {
-        await axios.post(`${API_URL}/ventas`, {
-          producto_id: item.id,
-          cantidad: item.cantidad,
-          fecha: fecha,
+        // Insertar venta
+        const { error: ventaError } = await supabase.from("ventas").insert([
+          {
+            producto_id: item.id,
+            cantidad: item.cantidad,
+            fecha: fecha,
+          },
+        ]);
+
+        if (ventaError) throw ventaError;
+
+        // Descontar stock usando RPC
+        const { error: stockError } = await supabase.rpc("descontar_stock", {
+          pid: item.id,
+          cantidad_vendida: item.cantidad,
         });
+
+        if (stockError) throw stockError;
       }
 
       // 🧠 Luego refrescamos el stock
-      cargarProductos();
+      await cargarProductos();
 
       // 🖨️ Generamos el PDF
       const doc = new jsPDF();
@@ -72,16 +91,25 @@ export default function Facturacion({ onBack }) {
       autoTable(doc, {
         startY: 40,
         head: [["Producto", "Cantidad", "Precio", "Total"]],
-        body: items.map((it) => [it.descripcion, it.cantidad, `$${it.precio}`, `$${it.total}`]),
+        body: items.map((it) => [
+          it.descripcion,
+          it.cantidad,
+          `$${it.precio}`,
+          `$${it.total}`,
+        ]),
       });
 
-      doc.text(`TOTAL FINAL: $${totalFactura.toFixed(2)}`, 14, doc.lastAutoTable.finalY + 10);
+      doc.text(
+        `TOTAL FINAL: $${totalFactura.toFixed(2)}`,
+        14,
+        doc.lastAutoTable.finalY + 10
+      );
       doc.save(`factura_${Date.now()}.pdf`);
 
       alert("Factura generada y stock actualizado correctamente ✅");
       setItems([]); // Limpiar factura
     } catch (err) {
-      console.error(err);
+      console.error("⚠️ Error al generar la factura:", err);
       alert("⚠️ Error al registrar la venta o generar la factura.");
     }
   };
@@ -116,7 +144,9 @@ export default function Facturacion({ onBack }) {
             <InputNumber
               placeholder="Cantidad"
               value={nuevo.cantidad}
-              onValueChange={(e) => setNuevo({ ...nuevo, cantidad: e.value })}
+              onValueChange={(e) =>
+                setNuevo({ ...nuevo, cantidad: e.value || 1 })
+              }
             />
           </div>
 
