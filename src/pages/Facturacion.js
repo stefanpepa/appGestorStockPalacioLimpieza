@@ -17,22 +17,23 @@ export default function Facturacion({ onBack }) {
   const [nuevo, setNuevo] = useState({ producto_id: null, cantidad: 1 });
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
 
-  // 🔹 Tipo de factura y razón social (para Factura A)
-  const [tipoFactura, setTipoFactura] = useState("B"); // "A" o "B"
+  const [tipoFactura, setTipoFactura] = useState("B");
   const [razonSocial, setRazonSocial] = useState("");
+  const [cuit, setCuit] = useState("");
 
-  // 🔹 Cargar productos desde Supabase
+  const [descuento, setDescuento] = useState(0);
+  const [descuentoAplicado, setDescuentoAplicado] = useState(0);
+  const [totalConDescuento, setTotalConDescuento] = useState(null);
+
   useEffect(() => {
     cargarProductos();
   }, []);
 
   const cargarProductos = async () => {
     const { data, error } = await supabase.from("productos").select("*");
-    if (error) console.error("Error al cargar productos:", error);
-    else setProductos(data);
+    if (!error) setProductos(data);
   };
 
-  // ➕ Agregar producto a la factura (sin afectar stock todavía)
   const agregarItem = () => {
     if (!nuevo.producto_id) return alert("Seleccioná un producto");
 
@@ -40,6 +41,7 @@ export default function Facturacion({ onBack }) {
     if (!producto) return alert("Producto no encontrado");
 
     const total = (nuevo.cantidad || 1) * producto.precio;
+
     setItems((prev) => [
       ...prev,
       {
@@ -56,7 +58,20 @@ export default function Facturacion({ onBack }) {
 
   const totalFactura = items.reduce((sum, it) => sum + it.total, 0);
 
-  // 🔹 Llamar al backend Node que factura en AFIP
+  const aplicarDescuento = () => {
+    const porc = Math.min(Math.max(descuento || 0, 0), 100);
+    setDescuentoAplicado(porc);
+    setTotalConDescuento(
+      porc === 0 ? null : totalFactura * (1 - porc / 100)
+    );
+  };
+
+  const porcentajeEf = descuentoAplicado || 0;
+  const totalFinal =
+    porcentajeEf > 0 && totalConDescuento != null
+      ? totalConDescuento
+      : totalFactura;
+
   const facturarEnAfip = async () => {
     const res = await fetch("http://localhost:3001/api/facturar", {
       method: "POST",
@@ -64,10 +79,13 @@ export default function Facturacion({ onBack }) {
       body: JSON.stringify({
         items,
         fecha,
-        total: totalFactura,
-        tipoFactura,              // "A" o "B"
-        tipoCliente: "consumidor_final",
-        razonSocial,              // la usamos si es A
+        total: totalFinal,
+        tipoFactura,
+        // 🔥 SI ES FACTURA A → cliente inscripto (obligatorio)
+        tipoCliente: tipoFactura === "A" ? "inscripto" : "consumidor_final",
+        razonSocial,
+        descuento: porcentajeEf,
+        cuitCliente: cuit, // 🔥 le mandás CUIT al backend
       }),
     });
 
@@ -80,48 +98,46 @@ export default function Facturacion({ onBack }) {
 
     if (!res.ok) {
       console.error("Error AFIP (frontend):", data);
-      throw new Error(data?.error || "Error al facturar en AFIP");
+      throw new Error(data?.error || "Error al facturar");
     }
 
-    return data; // { cae, vencimientoCae, nroComprobante, ptoVta, tipoFactura }
+    return data;
   };
 
-  // 🧾 Generar factura: guarda ventas + stock + genera PDF con datos AFIP
+
   const generarFactura = async () => {
     if (items.length === 0) return alert("No hay productos en la factura.");
 
-    if (tipoFactura === "A" && !razonSocial.trim()) {
-      return alert("Para Factura A tenés que cargar la razón social.");
+    if (tipoFactura === "A") {
+      if (!razonSocial.trim()) return alert("Debe ingresar razón social.");
+      if (!cuit.trim()) return alert("Debe ingresar CUIT.");
     }
 
     try {
-      // 1️⃣ Registrar ventas y descontar stock en Supabase
+      // registro ventas + stock
       for (const item of items) {
-        const { error: ventaError } = await supabase.from("ventas").insert([
-          {
-            producto_id: item.id,
-            cantidad: item.cantidad,
-            fecha: fecha,
-          },
+        await supabase.from("ventas").insert([
+          { producto_id: item.id, cantidad: item.cantidad, fecha },
         ]);
 
-        if (ventaError) throw ventaError;
-
-        const { error: stockError } = await supabase.rpc("descontar_stock", {
+        await supabase.rpc("descontar_stock", {
           pid: item.id,
           cantidad_vendida: item.cantidad,
         });
-
-        if (stockError) throw stockError;
       }
 
       await cargarProductos();
 
-      // 2️⃣ Facturar en AFIP (backend)
-      const { cae, vencimientoCae, nroComprobante, ptoVta, tipoFactura: tipoDevuelto } =
-        await facturarEnAfip();
+      // AFIP
+      const {
+        cae,
+        vencimientoCae,
+        nroComprobante,
+        ptoVta,
+        tipoFactura: tipoDevuelto,
+      } = await facturarEnAfip();
 
-      // 3️⃣ Generar PDF con datos AFIP
+      // PDF
       const doc = new jsPDF();
       doc.setFontSize(16);
       doc.text(
@@ -132,15 +148,18 @@ export default function Facturacion({ onBack }) {
 
       doc.setFontSize(12);
       doc.text(`Fecha: ${new Date(fecha).toLocaleDateString("es-AR")}`, 14, 30);
-      if (tipoFactura === "A" && razonSocial.trim()) {
+
+      if (tipoFactura === "A") {
         doc.text(`Razón social: ${razonSocial}`, 14, 38);
+        doc.text(`CUIT: ${cuit}`, 14, 46);
       }
-      doc.text(`Pto Vta: ${ptoVta}  Comp. N°: ${nroComprobante}`, 14, 46);
-      doc.text(`CAE: ${cae}`, 14, 54);
-      doc.text(`Vto CAE: ${vencimientoCae}`, 14, 62);
+
+      doc.text(`Pto Vta: ${ptoVta}  Comp: ${nroComprobante}`, 14, 54);
+      doc.text(`CAE: ${cae}`, 14, 62);
+      doc.text(`Vto CAE: ${vencimientoCae}`, 14, 70);
 
       autoTable(doc, {
-        startY: 70,
+        startY: 80,
         head: [["Producto", "Cantidad", "Precio", "Total"]],
         body: items.map((it) => [
           it.descripcion,
@@ -150,27 +169,35 @@ export default function Facturacion({ onBack }) {
         ]),
       });
 
-      doc.text(
-        `TOTAL FINAL: $${totalFactura.toFixed(2)}`,
-        14,
-        doc.lastAutoTable.finalY + 10
-      );
+      let y = doc.lastAutoTable.finalY + 10;
+      doc.text(`SUBTOTAL: $${totalFactura.toFixed(2)}`, 14, y);
+
+      if (porcentajeEf > 0) {
+        doc.text(
+          `DESCUENTO (${porcentajeEf}%): -$${(
+            totalFactura - totalFinal
+          ).toFixed(2)}`,
+          14,
+          (y += 8)
+        );
+      }
+
+      doc.text(`TOTAL FINAL: $${totalFinal.toFixed(2)}`, 14, (y += 10));
 
       doc.save(`factura_${Date.now()}.pdf`);
 
-      alert("Factura generada, stock actualizado y AFIP ✅");
+      alert("Factura generada correctamente");
       setItems([]);
-      if (tipoFactura === "A") setRazonSocial("");
+      setDescuento(0);
+      setDescuentoAplicado(0);
+      setTotalConDescuento(null);
+      setRazonSocial("");
+      setCuit("");
     } catch (err) {
-      console.error("⚠️ Error al generar la factura:", err);
-      alert(
-        "⚠️ " +
-          (err.message || "Error al registrar la venta o facturar en AFIP.")
-      );
+      alert("Error: " + err.message);
     }
   };
 
-  // 🔹 Opciones del dropdown de Factura
   const opcionesFactura = [
     { label: "Factura B", value: "B" },
     { label: "Factura A", value: "A" },
@@ -180,7 +207,7 @@ export default function Facturacion({ onBack }) {
     <main className="container">
       {onBack && (
         <Button
-          label="← Volver al menú"
+          label="← Volver"
           icon="pi pi-arrow-left"
           className="p-button-sm p-button-secondary"
           onClick={onBack}
@@ -236,42 +263,89 @@ export default function Facturacion({ onBack }) {
         </DataTable>
 
         <h3 style={{ textAlign: "right", marginTop: "1rem" }}>
-          Total final: ${totalFactura.toFixed(2)}
+          Subtotal: ${totalFactura.toFixed(2)}
+          {porcentajeEf > 0 && totalFinal !== totalFactura && (
+            <div style={{ marginTop: 6, color: "#14532d" }}>
+              Total con descuento ({porcentajeEf}%):{" "}
+              <b>${totalFinal.toFixed(2)}</b>
+            </div>
+          )}
         </h3>
 
-        {/* 🔹 Fila inferior: tipo de factura + razón social + botón */}
+        {/* Inputs izquierda + botones derecha */}
         <div
           style={{
             marginTop: "1rem",
             display: "flex",
-            gap: "0.75rem",
+            justifyContent: "space-between",
             alignItems: "center",
             flexWrap: "wrap",
+            gap: "0.75rem",
           }}
         >
-          <Dropdown
-            value={tipoFactura}
-            options={opcionesFactura}
-            onChange={(e) => setTipoFactura(e.value)}
-            placeholder="Tipo de factura"
-            style={{ minWidth: "150px" }}
-          />
-
-          {tipoFactura === "A" && (
-            <InputText
-              value={razonSocial}
-              onChange={(e) => setRazonSocial(e.target.value)}
-              placeholder="Razón social (Factura A)"
-              style={{ minWidth: "260px", flex: "1" }}
+          {/* IZQUIERDA */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "0.75rem",
+            }}
+          >
+            <Dropdown
+              value={tipoFactura}
+              options={opcionesFactura}
+              onChange={(e) => setTipoFactura(e.value)}
+              style={{ minWidth: "150px" }}
             />
-          )}
 
-          <Button
-            label="Generar Factura (PDF + AFIP)"
-            icon="pi pi-file-pdf"
-            className="p-button-success"
-            onClick={generarFactura}
-          />
+            <InputNumber
+              value={descuento}
+              onValueChange={(e) => setDescuento(e.value || 0)}
+              mode="decimal"
+              min={0}
+              max={100}
+              suffix="%"
+              style={{ width: "120px" }}
+            />
+
+            {tipoFactura === "A" && (
+              <>
+                <InputText
+                  value={razonSocial}
+                  onChange={(e) => setRazonSocial(e.target.value)}
+                  placeholder="Razón social"
+                  style={{
+                    minWidth: "260px",
+                    marginLeft: "85px",
+                  }}
+                />
+
+                <InputText
+                  value={cuit}
+                  onChange={(e) => setCuit(e.target.value)}
+                  placeholder="CUIT"
+                  style={{ width: "170px" }}
+                />
+              </>
+            )}
+          </div>
+
+          {/* DERECHA */}
+          <div style={{ display: "flex", gap: "0.75rem" }}>
+            <Button
+              label="Aplicar descuento"
+              icon="pi pi-percentage"
+              onClick={aplicarDescuento}
+            />
+
+            <Button
+              label="Generar Factura"
+              icon="pi pi-file-pdf"
+              className="p-button-success"
+              onClick={generarFactura}
+            />
+          </div>
         </div>
       </Card>
     </main>

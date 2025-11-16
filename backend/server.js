@@ -5,7 +5,7 @@ require("dotenv").config();
 
 const app = express();
 
-// 🔹 Permití tu frontend (ajustá puertos si hace falta)
+// Permitir frontend
 app.use(
   cors({
     origin: ["http://localhost:3000", "http://localhost:5173"],
@@ -14,21 +14,18 @@ app.use(
 
 app.use(express.json());
 
-// 📜 Log de requests
-app.use((req, res, next) => {
-  console.log("👉 Request:", req.method, req.url);
-  next();
-});
-
-// 🔑 Configuración base AFIP
+// AFIP config
 const afip = new Afip({
-  CUIT: process.env.AFIP_CUIT || 20409378472, // tu CUIT
-  access_token: process.env.AFIP_ACCESS_TOKEN, // token de ARCA/AFIP
+  CUIT: process.env.AFIP_CUIT || 20409378472,
+  access_token: process.env.AFIP_ACCESS_TOKEN,
 });
 
+// Health check
 app.get("/", (_, res) => res.send("Backend AFIP OK"));
 
-// 🧾 Endpoint principal de facturación
+// ===================================================================
+// FACTURAR
+// ===================================================================
 app.post("/api/facturar", async (req, res) => {
   try {
     const {
@@ -37,38 +34,44 @@ app.post("/api/facturar", async (req, res) => {
       total,
       tipoFactura = "B",
       tipoCliente = "consumidor_final",
-      razonSocial,
+      razonSocial = "",
+      cuitCliente = 0,
     } = req.body;
 
-    console.log("📦 Body recibido:", {
-      items,
-      fecha,
-      total,
-      tipoFactura,
-      tipoCliente,
-    });
+    console.log("📦 Body recibido:", req.body);
 
-    // 🧮 Desglose de IVA (21%)
-    const neto = parseFloat((total / 1.21).toFixed(2));
-    const iva = parseFloat((total - neto).toFixed(2));
-    const cbteFch = parseInt(String(fecha).replace(/-/g, ""));
+    // ============================
+    //   DOCUMENTO DEL RECEPTOR
+    // ============================
+    const docTipo = tipoFactura === "A" ? 80 : 99;  // 80 = CUIT / 99 = consumidor final
+    const docNro =
+      tipoFactura === "A"
+        ? Number(String(cuitCliente).replace(/\D/g, ""))
+        : 0;
 
-    // 🔹 Mapeo de tipos de comprobante
-    const cbteTipos = { A: 1, B: 6 };
-    const cbteTipo = cbteTipos[tipoFactura] || 6;
-
-    // 🔹 Condiciones IVA del receptor
+    // ============================
+    //   CONDICIÓN IVA RECEPTOR
+    // ============================
     const condicionIVA = {
       consumidor_final: 5,
       inscripto: 1,
       monotributista: 6,
       exento: 4,
     };
-    const condicionIVAReceptor = condicionIVA[tipoCliente] || 5;
 
-    // 🔹 Documento (según tipo de cliente)
-    const docTipo = tipoCliente === "consumidor_final" ? 99 : 80; // 99 sin DNI, 80 = CUIT
-    const docNro = tipoCliente === "consumidor_final" ? 0 : parseInt(process.env.CLIENTE_CUIT || 0);
+    const condicionIVAReceptor =
+      condicionIVA[tipoCliente] || 5; // default consumidor final
+
+    // ============================
+    //   CÁLCULO IVA
+    // ============================
+    const neto = parseFloat((total / 1.21).toFixed(2));
+    const iva = parseFloat((total - neto).toFixed(2));
+    const cbteFch = parseInt(String(fecha).replace(/-/g, ""));
+
+    // Tipo de comprobante
+    const cbteTipos = { A: 1, B: 6 };
+    const cbteTipo = cbteTipos[tipoFactura] || 6;
 
     const data = {
       CantReg: 1,
@@ -90,12 +93,13 @@ app.post("/api/facturar", async (req, res) => {
 
       MonId: "PES",
       MonCotiz: 1,
-      CondicionIVAReceptorId: condicionIVAReceptor,
 
-      // 🧠 Detalle de IVA (21%)
+      // *** OBLIGATORIO PARA FACTURA A ***
+      CondicionIvaReceptor: condicionIVAReceptor,
+
       Iva: [
         {
-          Id: 5, // 5 = 21%
+          Id: 5, // 21%
           BaseImp: neto,
           Importe: iva,
         },
@@ -106,7 +110,7 @@ app.post("/api/facturar", async (req, res) => {
 
     const voucher = await afip.ElectronicBilling.createNextVoucher(data);
 
-    console.log("✅ Respuesta AFIP:", voucher);
+    console.log("✔ Respuesta AFIP:", voucher);
 
     return res.json({
       cae: voucher.CAE,
@@ -116,14 +120,17 @@ app.post("/api/facturar", async (req, res) => {
       tipoFactura,
     });
   } catch (err) {
-    console.error("AFIP error:", err);
+    console.error("❌ AFIP error:", err);
     res.status(500).json({
       error: err.message || "Error al facturar en AFIP",
     });
   }
 });
 
+// ===================================================================
+// INICIAR SERVER
+// ===================================================================
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log("✅ Backend AFIP escuchando en http://localhost:" + PORT);
-});
+app.listen(PORT, () =>
+  console.log("🚀 Backend AFIP escuchando en http://localhost:" + PORT)
+);
