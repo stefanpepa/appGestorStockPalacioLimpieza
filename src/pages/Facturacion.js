@@ -16,11 +16,9 @@ export default function Facturacion({ onBack }) {
   const [items, setItems] = useState([]);
   const [nuevo, setNuevo] = useState({ producto_id: null, cantidad: 1 });
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-
   const [tipoFactura, setTipoFactura] = useState("B");
   const [razonSocial, setRazonSocial] = useState("");
   const [cuit, setCuit] = useState("");
-
   const [descuento, setDescuento] = useState(0);
   const [descuentoAplicado, setDescuentoAplicado] = useState(0);
   const [totalConDescuento, setTotalConDescuento] = useState(null);
@@ -61,9 +59,7 @@ export default function Facturacion({ onBack }) {
   const aplicarDescuento = () => {
     const porc = Math.min(Math.max(descuento || 0, 0), 100);
     setDescuentoAplicado(porc);
-    setTotalConDescuento(
-      porc === 0 ? null : totalFactura * (1 - porc / 100)
-    );
+    setTotalConDescuento(porc === 0 ? null : totalFactura * (1 - porc / 100));
   };
 
   const porcentajeEf = descuentoAplicado || 0;
@@ -72,39 +68,9 @@ export default function Facturacion({ onBack }) {
       ? totalConDescuento
       : totalFactura;
 
-  const facturarEnAfip = async () => {
-    const res = await fetch("http://localhost:3001/api/facturar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        items,
-        fecha,
-        total: totalFinal,
-        tipoFactura,
-        // 🔥 SI ES FACTURA A → cliente inscripto (obligatorio)
-        tipoCliente: tipoFactura === "A" ? "inscripto" : "consumidor_final",
-        razonSocial,
-        descuento: porcentajeEf,
-        cuitCliente: cuit, // 🔥 le mandás CUIT al backend
-      }),
-    });
-
-    let data = null;
-    try {
-      data = await res.json();
-    } catch (e) {
-      console.error("No se pudo parsear JSON del backend:", e);
-    }
-
-    if (!res.ok) {
-      console.error("Error AFIP (frontend):", data);
-      throw new Error(data?.error || "Error al facturar");
-    }
-
-    return data;
-  };
-
-
+  // ===============================
+  // 📄 FACTURA LOCAL (SIN AFIP)
+  // ===============================
   const generarFactura = async () => {
     if (items.length === 0) return alert("No hay productos en la factura.");
 
@@ -114,12 +80,11 @@ export default function Facturacion({ onBack }) {
     }
 
     try {
-      // registro ventas + stock
+      // Registrar ventas y actualizar stock
       for (const item of items) {
         await supabase.from("ventas").insert([
           { producto_id: item.id, cantidad: item.cantidad, fecha },
         ]);
-
         await supabase.rpc("descontar_stock", {
           pid: item.id,
           cantidad_vendida: item.cantidad,
@@ -128,20 +93,35 @@ export default function Facturacion({ onBack }) {
 
       await cargarProductos();
 
-      // AFIP
-      const {
-        cae,
-        vencimientoCae,
-        nroComprobante,
-        ptoVta,
-        tipoFactura: tipoDevuelto,
-      } = await facturarEnAfip();
+      // Crear factura local simulada
+      const nroComprobante = `${tipoFactura}-0001-${String(
+        Math.floor(Math.random() * 9999999)
+      ).padStart(7, "0")}`;
+      const cae = Math.floor(Math.random() * 99999999999999).toString();
+      const vencimientoCae = new Date(
+        Date.now() + 10 * 24 * 60 * 60 * 1000
+      )
+        .toISOString()
+        .slice(0, 10);
 
-      // PDF
+      // Guardar factura en Supabase (historial)
+      await supabase.from("facturas").insert([
+        {
+          tipo: tipoFactura,
+          nro_comprobante: nroComprobante,
+          fecha,
+          total: totalFinal,
+          cliente: razonSocial || "Consumidor Final",
+          cuit: cuit || "",
+          descuento: porcentajeEf,
+        },
+      ]);
+
+      // Generar PDF
       const doc = new jsPDF();
       doc.setFontSize(16);
       doc.text(
-        `Factura ${tipoDevuelto || tipoFactura} - El Palacio de la Limpieza`,
+        `Factura ${tipoFactura} - El Palacio de la Limpieza`,
         14,
         20
       );
@@ -154,7 +134,7 @@ export default function Facturacion({ onBack }) {
         doc.text(`CUIT: ${cuit}`, 14, 46);
       }
 
-      doc.text(`Pto Vta: ${ptoVta}  Comp: ${nroComprobante}`, 14, 54);
+      doc.text(`Comp. N°: ${nroComprobante}`, 14, 54);
       doc.text(`CAE: ${cae}`, 14, 62);
       doc.text(`Vto CAE: ${vencimientoCae}`, 14, 70);
 
@@ -184,9 +164,9 @@ export default function Facturacion({ onBack }) {
 
       doc.text(`TOTAL FINAL: $${totalFinal.toFixed(2)}`, 14, (y += 10));
 
-      doc.save(`factura_${Date.now()}.pdf`);
+      doc.save(`factura_${nroComprobante}.pdf`);
 
-      alert("Factura generada correctamente");
+      alert("✅ Factura local generada correctamente");
       setItems([]);
       setDescuento(0);
       setDescuentoAplicado(0);
@@ -194,6 +174,7 @@ export default function Facturacion({ onBack }) {
       setRazonSocial("");
       setCuit("");
     } catch (err) {
+      console.error(err);
       alert("Error: " + err.message);
     }
   };
@@ -215,7 +196,7 @@ export default function Facturacion({ onBack }) {
         />
       )}
 
-      <Card title="Facturación">
+      <Card title="Facturación Local">
         <div className="p-fluid grid formgrid">
           <div className="field col-12 md:col-5">
             <Dropdown
@@ -272,7 +253,6 @@ export default function Facturacion({ onBack }) {
           )}
         </h3>
 
-        {/* Inputs izquierda + botones derecha */}
         <div
           style={{
             marginTop: "1rem",
@@ -283,7 +263,6 @@ export default function Facturacion({ onBack }) {
             gap: "0.75rem",
           }}
         >
-          {/* IZQUIERDA */}
           <div
             style={{
               display: "flex",
@@ -331,7 +310,6 @@ export default function Facturacion({ onBack }) {
             )}
           </div>
 
-          {/* DERECHA */}
           <div style={{ display: "flex", gap: "0.75rem" }}>
             <Button
               label="Aplicar descuento"
